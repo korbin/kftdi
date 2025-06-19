@@ -32,8 +32,10 @@ impl MpsseInterface for crate::Interface {
     }
 
     async fn initialize_mpsse(&self) -> Result<()> {
+        self.purge_all().await?;
         self.set_bitmode(0, crate::Bitmode::Reset).await?;
         self.set_bitmode(0, crate::Bitmode::Mpsse).await?;
+        self.purge_all().await?;
         self.synchronize_mpsse().await?;
         self.purge_all().await?;
 
@@ -41,19 +43,13 @@ impl MpsseInterface for crate::Interface {
     }
 
     async fn synchronize_mpsse(&self) -> Result<()> {
-        self.write_all(vec![EnableLoopback::byte()]).await?;
-
-        self.purge_rx().await?;
-
-        self.write_all(vec![Synchronize::byte()]).await?;
+        self.write_all(vec![EnableLoopback::byte(), Synchronize::byte(), DisableLoopback::byte()]).await?;
 
         let mut buf = [0u8; 2];
         self.read_all(&mut buf).await?;
 
-        self.write_all(vec![DisableLoopback::byte()]).await?;
-
         if !(buf[0] == 0xfa && buf[1] == Synchronize::byte()) {
-            return Err(anyhow::Error::msg("invalid synchronization byte"));
+            return Err(anyhow::Error::msg(format!("invalid synchronization byte {:x?}", buf)));
         }
 
         Ok(())
